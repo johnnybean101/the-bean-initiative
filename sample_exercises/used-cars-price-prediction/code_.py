@@ -1,3 +1,5 @@
+from function_ import ConvertNumeric
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -6,7 +8,6 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
-from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import cross_val_score
 from sklearn.linear_model import LinearRegression
@@ -70,20 +71,6 @@ train_eda.corr()['Price']
 # get relevant columns only
 X_train = train.copy().drop(columns=['Name' , 'New_Price', 'Price'])
 y_train = train.copy()[['Price']]
-
-# custom transformation
-class ConvertNumeric(BaseEstimator, TransformerMixin):
-    def __init__(self):
-        pass 
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X, y=None):
-        mileage = np.array(X.apply(lambda x: float(x['Mileage'].split(' ')[0]) if x['Mileage'] == x['Mileage'] else x['Mileage'], axis=1))
-        engine = np.array(X.apply(lambda x: float(x['Engine'].split(' ')[0]) if x['Engine'] == x['Engine'] else x['Engine'], axis=1))
-        power = np.array(X.apply(lambda x: float(x['Power'].split(' ')[0]) if (x['Power'] == x['Power']) and (x['Power'].split(' ')[0] != 'null') else np.nan, axis=1))
-        return np.c_[mileage, engine, power]
 
 # create transformation pipeline
 convert_columns = ['Mileage', 'Engine', 'Power']
