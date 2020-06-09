@@ -3,14 +3,28 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.model_selection import cross_val_score
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
 
 #=====================================
 # Import Data
 #=====================================
-train = pd.read_csv('data/train-data.csv').iloc[:, 1:]
-test = pd.read_csv('data/test-data.csv').iloc[:, 1:]
+df = pd.read_csv('data/train-data.csv').iloc[:, 1:]
+
+#================================
+# Split Train, Test Sets
+#================================
+stratshuffle = StratifiedShuffleSplit(
+                n_splits=1, 
+                test_size=0.2, 
+                random_state=42
+                )
+for train_indices, test_indices in stratshuffle.split(df, df['Year']):
+    train = df.iloc[train_indices, :]
+    test = df.iloc[test_indices, :]
 
 #=====================================
 # Data Exploration
@@ -51,23 +65,45 @@ train_eda.corr()['Price']
 # Data Preprocessing
 #=====================================
 # get relevant columns only
-train_trans = train.copy().drop(['Name', 'New_Price'], axis=1) 
+train_trans = train.copy().drop(columns=['Name' , 'New_Price'])
 
-# drop rows with any instance of null values
-train_trans = train_trans.dropna(how='any').reset_index(drop=True)
+# custom transformation
+class ConvertNumeric(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        pass 
 
-# convert categorical columns into numerical
-train_trans['Mileage'] = train_trans.apply(lambda x: float(x.Mileage.split(' ')[0]), axis=1)
-train_trans['Engine'] = train_trans.apply(lambda x: float(x.Engine.split(' ')[0]), axis=1)
-train_trans = train_trans[train_trans['Power'] != 'null bhp'].reset_index(drop=True) # only consider values != 'null bhp'
-train_trans['Power'] = train_trans.apply(lambda x: float(x.Power.split(' ')[0]), axis=1)
+    def fit(self, X, y=None):
+        return self
 
-# convert remaining categorical columns into sets of binary columns
-onehot_encoder = OneHotEncoder()
-cat_col = train_trans.select_dtypes(exclude='number')
-train_trans.drop(columns=cat_col.columns, inplace=True)
-cat_col = pd.DataFrame(onehot_encoder.fit_transform(cat_col).toarray(), columns = onehot_encoder.get_feature_names())
-train_trans = pd.concat([train_trans, cat_col], axis=1)
+    def transform(self, X, y=None):
+        mileage = np.array(X.apply(lambda x: float(x['Mileage'].split(' ')[0]) if x['Mileage'] == x['Mileage'] else x['Mileage'], axis=1))
+        engine = np.array(X.apply(lambda x: float(x['Engine'].split(' ')[0]) if x['Engine'] == x['Engine'] else x['Engine'], axis=1))
+        power = np.array(X.apply(lambda x: float(x['Power'].split(' ')[0]) if (x['Power'] == x['Power']) and (x['Power'].split(' ')[0] != 'null') else np.nan, axis=1))
+        return np.c_[mileage, engine, power]
+
+# create transformation pipeline
+convert_columns = ['Mileage', 'Engine', 'Power']
+num_columns = train_trans.select_dtypes('number').columns.to_list()
+cat_columns = [cat_col for cat_col in train_trans.select_dtypes(exclude='number').columns if cat_col not in convert_columns]
+
+num_trans1 = Pipeline([('convertnumeric', ConvertNumeric()), 
+                       ('impute', SimpleImputer(strategy='median')),
+                       ('scaler', StandardScaler())])
+
+num_trans2 = Pipeline([('impute', SimpleImputer(strategy='median')),
+                       ('scaler', StandardScaler())])
+
+cat_trans = Pipeline([('impute', SimpleImputer(strategy='most_frequent')),
+                       ('onehot_encode', OneHotEncoder())])
+
+trans_pipeline = ColumnTransformer(
+                  transformers=[('num_trans1', num_trans1, convert_columns), 
+                                ('num_trans2', num_trans2, num_columns),
+                                ('cat_trans', cat_trans, cat_columns)],
+                  remainder='passthrough'
+)
+
+trans_pipeline.fit_transform(train_trans)
 
 #=====================================
 # Train Model 
@@ -81,3 +117,15 @@ linear_reg.fit(X_train_trans, y_train_trans)
 # evaluate model performance on training set
 rmse = np.sqrt(mean_squared_error(y_train_trans, linear_reg.predict(X_train_trans)))
 print('RMSE: ' + str(rmse))
+
+# evaluate model performance using cross validation
+mse_scores = cross_val_score(linear_reg, X_train_trans, y_train_trans, 
+                cv=10, scoring='neg_mean_squared_error')
+rmse_scores = np.sqrt(-mse_scores)
+
+print('K-folds RMSE: ', np.mean(rmse_scores), np.std(rmse_scores))
+
+#=====================================
+# Automate Preprocessing
+#=====================================
+
