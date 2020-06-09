@@ -2,9 +2,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.pipeline import Pipeline
 from sklearn.model_selection import cross_val_score
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
@@ -65,7 +68,8 @@ train_eda.corr()['Price']
 # Data Preprocessing
 #=====================================
 # get relevant columns only
-train_trans = train.copy().drop(columns=['Name' , 'New_Price'])
+X_train = train.copy().drop(columns=['Name' , 'New_Price', 'Price'])
+y_train = train.copy()[['Price']]
 
 # custom transformation
 class ConvertNumeric(BaseEstimator, TransformerMixin):
@@ -83,8 +87,8 @@ class ConvertNumeric(BaseEstimator, TransformerMixin):
 
 # create transformation pipeline
 convert_columns = ['Mileage', 'Engine', 'Power']
-num_columns = train_trans.select_dtypes('number').columns.to_list()
-cat_columns = [cat_col for cat_col in train_trans.select_dtypes(exclude='number').columns if cat_col not in convert_columns]
+num_columns = X_train.select_dtypes('number').columns.to_list()
+cat_columns = [cat_col for cat_col in X_train.select_dtypes(exclude='number').columns if cat_col not in convert_columns]
 
 num_trans1 = Pipeline([('convertnumeric', ConvertNumeric()), 
                        ('impute', SimpleImputer(strategy='median')),
@@ -103,29 +107,33 @@ trans_pipeline = ColumnTransformer(
                   remainder='passthrough'
 )
 
-trans_pipeline.fit_transform(train_trans)
+X_train_trans = trans_pipeline.fit_transform(X_train)
 
 #=====================================
 # Train Model 
 #=====================================
-X_train_trans = train_trans.drop(['Price'], axis=1)
-y_train_trans = train_trans[['Price']]
-
 linear_reg = LinearRegression()
-linear_reg.fit(X_train_trans, y_train_trans)
+linear_reg.fit(X_train_trans, y_train)
 
 # evaluate model performance on training set
-rmse = np.sqrt(mean_squared_error(y_train_trans, linear_reg.predict(X_train_trans)))
+rmse = np.sqrt(mean_squared_error(y_train, linear_reg.predict(X_train_trans)))
 print('RMSE: ' + str(rmse))
 
 # evaluate model performance using cross validation
-mse_scores = cross_val_score(linear_reg, X_train_trans, y_train_trans, 
+mse_scores = cross_val_score(linear_reg, X_train_trans, y_train, 
                 cv=10, scoring='neg_mean_squared_error')
 rmse_scores = np.sqrt(-mse_scores)
 
 print('K-folds RMSE: ', np.mean(rmse_scores), np.std(rmse_scores))
 
 #=====================================
-# Automate Preprocessing
+# Evaluate Model on Test Set
 #=====================================
+X_test = test.copy().drop(columns=['Name' , 'New_Price', 'Price'])
+X_test_trans = trans_pipeline.transform(X_test)
+y_test = test.copy()['Price']
 
+y_test_ = linear_reg.predict(X_test_trans)
+
+rmse = np.sqrt(mean_squared_error(y_test, y_test_))
+print('RMSE: ' + str(rmse))
