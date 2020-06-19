@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 
 import torch
 
+# ensure reproducibility
+torch.manual_seed(0)
+
 # initialize X and y
 n = 1
 m = 100
@@ -21,13 +24,13 @@ b = torch.rand(size=(1, 1))
 losses = list()
 for epoch in range(epochs):
     h = torch.matmul(X, theta) + b
-    theta_grad = (lr / m) * torch.matmul(X.T, (h - y))
-    b_grad = (lr / m) * torch.sum(h - y)
+    theta_grad = (1 / m) * torch.matmul(X.T, (h - y))
+    b_grad = (1 / m) * torch.sum(h - y)
 
-    loss = (1 / 2*m) * torch.matmul((h - y).T, (h - y))   
+    loss = (1 / (2*m)) * torch.matmul((h - y).T, (h - y))   
     losses.append(loss.item())
-    theta -= theta_grad
-    b -= b_grad
+    theta -= lr*theta_grad
+    b -= lr*b_grad
 
 # plot loss function
 plt.plot(losses)
